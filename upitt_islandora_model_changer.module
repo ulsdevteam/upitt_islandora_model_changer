@@ -1,0 +1,111 @@
+<?php
+
+
+/**
+ * Implements hook_menu().
+ */
+function upitt_islandora_model_changer_menu() {
+  return array(
+    'islandora/object/%islandora_object/manage/changemodel' => array(
+      'title' => 'Change the object\'s model',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('upitt_islandora_model_changer_change', 2),
+      'type' => MENU_CALLBACK,
+      'access arguments' => array(ISLANDORA_MANAGE_PROPERTIES),
+    ),
+  );
+}
+
+/**
+ * Implements hook_islandora_overview_object_alter().
+ *
+ * Shows the collection usage stats on the object overview tab if allowed.
+ */
+function upitt_islandora_model_changer_islandora_overview_object_alter(AbstractObject &$object, &$output) {
+  if (!user_access(ISLANDORA_MANAGE_PROPERTIES)) {
+    return;
+  }
+  if (_is_book_or_manuscript($object)) {
+    add_change_model_output($object, $output);
+  }
+}
+
+
+/**
+ * Helper function to determine whether or not the current object is a book or a manuscript.
+ */
+function _is_book_or_manuscript(AbstractObject $object) {
+  $retval = FALSE;
+  // allow bookCModel
+  $retval |= (!(array_search('islandora:bookCModel', $object->models) === FALSE));
+  // allow manuscriptCModel
+  $retval |= (!(array_search('islandora:manuscriptCModel', $object->models) === FALSE));
+  return $retval;
+}
+
+function add_change_model_output(AbstractObject &$object, &$output) {
+  $object_base_model = _base_model_of_object($object);
+
+  $change_model_link = l(t("Change model from ") . '"' . $object_base_model . '"', "/islandora/object/{$object->id}/manage/changemodel");
+  $output['upitt_islandora_model_changer'] = array(
+    '#type' => 'item',
+    '#title' => 'Change model',
+    '#markup' => $change_model_link
+  );
+}
+
+function upitt_islandora_model_changer_change($form, &$form_state, AbstractObject $object) {
+  // display the current object's model and dropdown box for new model selection.
+  $object_base_model = _base_model_of_object($object);
+
+  $form['model_options'] = array(
+      '#type' => 'value',
+      '#value' => array('islandora:bookCModel' => t('Book'),
+                        'islandora:manuscriptCModel' => t('Manuscript')),
+    );
+
+  $form['model'] = array(
+      '#type' => 'select',
+      '#title' => t('Model'),
+      '#description' => t('Update the underlying model for the given object.'),
+      '#options' => $form['model_options']['#value'],
+    );
+
+  $form['object_id'] = array(
+      '#type' => 'hidden',
+      '#value' => $object->id,
+    );
+
+  $form['submit'] = array(
+      '#type' => 'submit',
+      '#value' => t('Save'),
+    );
+
+
+  return $form;
+}
+
+function upitt_islandora_model_changer_change_submit($form, &$form_state) {
+  $pid = $form_state['values']['object_id'];
+  $object = islandora_object_load($pid);
+  $current_object_base_model = _base_model_of_object($object);
+  if ($form_state['values']['model'] && $current_object_base_model <> $form_state['values']['model']) {
+    $object->models = array("fedora-system:FedoraObject-3.0", $form_state['values']['model']);
+  }
+  $form_state['redirect'] = "/islandora/object/{$form_state['values']['object_id']}/manage";
+}
+
+/**
+ * Helper function to derive the base model -- omitting the "fedora-system:FedoraObject-3.0" value.
+ */
+function _base_model_of_object($object) {
+  $models = $object->models;
+  $object_base_model = FALSE;
+  foreach ($models as $model) {
+    if ($model <> 'fedora-system:FedoraObject-3.0' && !$object_base_model) {
+      $object_base_model = $model;
+    }
+  }
+  return $object_base_model;
+}
+

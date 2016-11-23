@@ -1,0 +1,8 @@
+name = University of Pittsburgh Islandora Model Changer
+package = Islandora Tools
+description = To change from one model to another - only available for Book and Manuscript object models.
+version = 7.x
+core = 7.x
+dependencies[] = islandora
+dependencies[] = islandora_basic_collection
+dependencies[] = islandora_manuscript
