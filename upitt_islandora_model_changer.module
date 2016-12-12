@@ -86,11 +86,24 @@ function upitt_islandora_model_changer_change($form, &$form_state, AbstractObjec
 }
 
 function upitt_islandora_model_changer_change_submit($form, &$form_state) {
+  module_load_include('inc', 'islandora_paged_content', 'includes/utilities');
+
   $pid = $form_state['values']['object_id'];
   $object = islandora_object_load($pid);
   $current_object_base_model = _base_model_of_object($object);
   if ($form_state['values']['model'] && $current_object_base_model <> $form_state['values']['model']) {
     $object->models = array("fedora-system:FedoraObject-3.0", $form_state['values']['model']);
+    // If changing to a Book, convert all child pages to pageCModel objects... else convert to manuscriptPageCModel
+    $pages = islandora_paged_content_get_pages($object);
+    $resultant_page_model = ($form_state['values']['model'] == 'islandora:bookCModel') ? 'islandora:pageCModel' : 'islandora:manuscriptPageCModel';
+    foreach ($pages as $page) {
+      
+      $page_object = islandora_object_load($page['pid']);
+      $page_current_base_model = _base_model_of_object($page_object);
+      if ($page_current_base_model <> $resultant_page_model) {
+        $page_object->models = array("fedora-system:FedoraObject-3.0", $resultant_page_model);
+      }
+    }
   }
   $form_state['redirect'] = "/islandora/object/{$form_state['values']['object_id']}/manage";
 }
