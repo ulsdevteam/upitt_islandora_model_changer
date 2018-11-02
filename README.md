@@ -17,6 +17,9 @@ Changing to a manuscriptCModel means that all of the pages are converted to manu
 
 It should be possible to change the object back to the original type if the change was not intended or desirable.
 
+### REST uri for changing models
+For a group of object that need to be changed from Book to Manuscript (for example), the code will handle the model name as a $_GET parameter when passed into the islandora/object/[PID]/manage/changemodel handler with ?model=manuscriptCModel.  Either the long name such as "islandora:bookCModel" or the islandora-implied short model name such as "bookCModel" can be supplied.
+
 
 *NOTE:* Newspaper Issue can not be supported unless the parent newspaper object (as is related in the RELS-EXT with the `isMemberOf` relationship) is manually related after the fact.
 A full analysis of the values related to Newspaper Issues has not been done, so there may be other requirements if this is attempted.

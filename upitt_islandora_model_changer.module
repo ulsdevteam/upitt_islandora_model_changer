@@ -57,6 +57,25 @@ function add_change_model_output(AbstractObject &$object, &$output) {
 }
 
 function upitt_islandora_model_changer_change($form, &$form_state, AbstractObject $object) {
+  // Check whether or not this page has $_GET parameters provided... if so, and
+  // if it has a legal model value, then process as if it was submitted via the form.
+  if (isset($_GET['model'])) {
+    $item = menu_get_item();
+    $object = $item['map'][2];
+    $model = $_GET['model'];
+    // Make sure that the full model name is provided.
+    if (strstr($model, "islandora:") == '') {
+      $model = 'islandora:' . $model;
+    }
+
+    if (upitt_islandora_model_changer_process_change($object, $model)) {
+      drupal_set_message(t('Model changed to @model for this object.', array(
+          '@model' => $model) ));
+      drupal_goto('islandora/object/' . $object->id . '/manage');
+      return;
+    }
+  }
+
   // display the current object's model and dropdown box for new model selection.
   $object_base_model = _base_model_of_object($object);
 
@@ -84,67 +103,73 @@ function upitt_islandora_model_changer_change($form, &$form_state, AbstractObjec
       '#value' => t('Save'),
     );
 
-
   return $form;
 }
 
 function upitt_islandora_model_changer_change_submit($form, &$form_state) {
-  module_load_include('inc', 'islandora_paged_content', 'includes/utilities');
-
   $pid = $form_state['values']['object_id'];
   $object = islandora_object_load($pid);
   $current_object_base_model = _base_model_of_object($object);
   if ($form_state['values']['model'] && $current_object_base_model <> $form_state['values']['model']) {
-    // If changing to a Book, convert all child pages to pageCModel objects... else convert to manuscriptPageCModel
-    $pages = islandora_paged_content_get_pages($object);
-    if (($form_state['values']['model'] == 'islandora:sp_large_image_cmodel') && count($pages) == 1) {
-      if (count($pages) > 1) {
-        drupal_set_message('This object can not be converted because it has child pages [' . count($pages) . ' pages] -- and an Image model can not have Page objects as children.', 'error');
-      } else {
-        $ok = TRUE;
-        foreach ($pages as $page) {
-          $page_object = islandora_object_load($page['pid']);
-          if (isset($page_object['OBJ']) && !empty($page_object['OBJ']) && 
-              isset($page_object['JP2']) && !empty($page_object['JP2'])) {
+    upitt_islandora_model_changer_process_change($object, $form_state['values']['model']);
+  }
+  $form_state['redirect'] = "/islandora/object/{$form_state['values']['object_id']}/manage";
+}
 
-            $obj_filename = '/tmp/OBJ_'.str_replace(':', '_', $page['pid']);
-            $obj = $page_object['OBJ']->getContent($obj_filename);
-            $datastream_obj = $object->constructDatastream('OBJ');
-            $datastream_obj->setContentFromFile($obj_filename);
-            $object->ingestDatastream($datastream_obj);
-            @unlink($obj_filename);
+function upitt_islandora_model_changer_process_change($object, $model) {
+  $retval = TRUE;
+  module_load_include('inc', 'islandora_paged_content', 'includes/utilities');
 
-            $jp2_filename = '/tmp/JP2_'.str_replace(':', '_', $page['pid']);
-            $jp2 = $page_object['JP2']->getContent($jp2_filename);
-            $datastream_jp2 = $object->constructDatastream('JP2');
-            $datastream_jp2->setContentFromFile($jp2_filename);
-            $object->ingestDatastream($datastream_jp2);
-            drupal_set_message('purgeObject must be called for ' . $page['pid']);
-            @unlink($jp2_filename);
-          }
-          else {
-            drupal_set_message('This child object [PID = ' . $page['pid'] . '] is lacking either OBJ or JP2 or both datastreams.  Pages [' . count($pages) . ' pages].', 'warning');
-            $ok = FALSE;
-          }
+  // If changing to a Book, convert all child pages to pageCModel objects... else convert to manuscriptPageCModel
+  $pages = islandora_paged_content_get_pages($object);
+  if (($model == 'islandora:sp_large_image_cmodel') && count($pages) == 1) {
+    if (count($pages) > 1) {
+      drupal_set_message('This object can not be converted because it has child pages [' . count($pages) . ' pages] -- and an Image model can not have Page objects as children.', 'error');
+      $retval = FALSE;
+    } else {
+      $ok = TRUE;
+      foreach ($pages as $page) {
+        $page_object = islandora_object_load($page['pid']);
+        if (isset($page_object['OBJ']) && !empty($page_object['OBJ']) &&
+            isset($page_object['JP2']) && !empty($page_object['JP2'])) {
+
+          $obj_filename = '/tmp/OBJ_'.str_replace(':', '_', $page['pid']);
+          $obj = $page_object['OBJ']->getContent($obj_filename);
+          $datastream_obj = $object->constructDatastream('OBJ');
+          $datastream_obj->setContentFromFile($obj_filename);
+          $object->ingestDatastream($datastream_obj);
+          @unlink($obj_filename);
+
+          $jp2_filename = '/tmp/JP2_'.str_replace(':', '_', $page['pid']);
+          $jp2 = $page_object['JP2']->getContent($jp2_filename);
+          $datastream_jp2 = $object->constructDatastream('JP2');
+          $datastream_jp2->setContentFromFile($jp2_filename);
+          $object->ingestDatastream($datastream_jp2);
+          drupal_set_message('purgeObject must be called for ' . $page['pid']);
+          @unlink($jp2_filename);
         }
-        if ($ok) {
-          $object->models = array("fedora-system:FedoraObject-3.0", $form_state['values']['model']);
+        else {
+          drupal_set_message('This child object [PID = ' . $page['pid'] . '] is lacking either OBJ or JP2 or both datastreams.  Pages [' . count($pages) . ' pages].', 'warning');
+          $ok = FALSE;
         }
       }
-    }
-    else {
-      $object->models = array("fedora-system:FedoraObject-3.0", $form_state['values']['model']);
-      $resultant_page_model = ($form_state['values']['model'] == 'islandora:bookCModel') ? 'islandora:pageCModel' : 'islandora:manuscriptPageCModel';
-      foreach ($pages as $page) {      
-        $page_object = islandora_object_load($page['pid']);
-        $page_current_base_model = _base_model_of_object($page_object);
-        if ($page_current_base_model <> $resultant_page_model) {
-          $page_object->models = array("fedora-system:FedoraObject-3.0", $resultant_page_model);
-        }
+      if ($ok) {
+        $object->models = array("fedora-system:FedoraObject-3.0", $model);
       }
     }
   }
-  $form_state['redirect'] = "/islandora/object/{$form_state['values']['object_id']}/manage";
+  else {
+    $object->models = array("fedora-system:FedoraObject-3.0", $model);
+    $resultant_page_model = ($model == 'islandora:bookCModel') ? 'islandora:pageCModel' : 'islandora:manuscriptPageCModel';
+    foreach ($pages as $page) {
+      $page_object = islandora_object_load($page['pid']);
+      $page_current_base_model = _base_model_of_object($page_object);
+      if ($page_current_base_model <> $resultant_page_model) {
+        $page_object->models = array("fedora-system:FedoraObject-3.0", $resultant_page_model);
+      }
+    }
+  }
+  return $retval;
 }
 
 /**
