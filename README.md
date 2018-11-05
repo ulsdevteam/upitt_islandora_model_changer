@@ -27,7 +27,7 @@ A full analysis of the values related to Newspaper Issues has not been done, so 
 
 ## Author / License
 
-Written by Willow Gillingham for the [University of Pittsburgh](http://www.pitt.edu).  Copyright (c) University of Pittsburgh.
+Written by [Willow Gillingham](https://github.com/bgilling) for the [University of Pittsburgh](http://www.pitt.edu).  Copyright (c) University of Pittsburgh.
 
 Released under a license of GPL v2 or later.
 
