@@ -25,21 +25,24 @@ function upitt_islandora_model_changer_islandora_overview_object_alter(AbstractO
   if (!user_access(ISLANDORA_MANAGE_PROPERTIES)) {
     return;
   }
-  if (_is_book_or_manuscript($object)) {
+  if (_is_model_change_allowed($object)) {
     add_change_model_output($object, $output);
   }
 }
 
 
 /**
- * Helper function to determine whether or not the current object is a book or a manuscript.
+ * Helper function to determine whether or not the current object's is allowed to be changed based
+ * on the model.
  */
-function _is_book_or_manuscript(AbstractObject $object) {
+function _is_model_change_allowed(AbstractObject $object) {
   $retval = FALSE;
   // allow bookCModel
   $retval |= (!(array_search('islandora:bookCModel', $object->models) === FALSE));
   // allow manuscriptCModel
   $retval |= (!(array_search('islandora:manuscriptCModel', $object->models) === FALSE));
+  // allow newspaperIssueCModel
+  $retval |= (!(array_search('islandora:newspaperIssueCModel', $object->models) === FALSE));
   // allow image
   $retval |= (!(array_search('islandora:sp_large_image_cmodel', $object->models) === FALSE));
   return $retval;
@@ -82,8 +85,9 @@ function upitt_islandora_model_changer_change($form, &$form_state, AbstractObjec
   $form['model_options'] = array(
       '#type' => 'value',
       '#value' => array('islandora:bookCModel' => t('Book'),
-                        'islandora:sp_large_image_cmodel' => t('Image'),
-                        'islandora:manuscriptCModel' => t('Manuscript')),
+          'islandora:sp_large_image_cmodel' => t('Image'),
+          'islandora:newspaperIssue' => t('Newspaper Issue'),
+          'islandora:manuscriptCModel' => t('Manuscript')),
     );
 
   $form['model'] = array(
@@ -124,7 +128,10 @@ function upitt_islandora_model_changer_process_change($object, $model) {
   $pages = islandora_paged_content_get_pages($object);
   if (($model == 'islandora:sp_large_image_cmodel') && count($pages) == 1) {
     if (count($pages) > 1) {
-      drupal_set_message('This object can not be converted because it has child pages [' . count($pages) . ' pages] -- and an Image model can not have Page objects as children.', 'error');
+      drupal_set_message(t('This object can not be converted because it has child pages [@page_count pages]' .
+              ' -- and an Image model can not have Page objects as children.', array(
+                '@page_count' => count($pages),
+              )), 'error');
       $retval = FALSE;
     } else {
       $ok = TRUE;
@@ -149,7 +156,11 @@ function upitt_islandora_model_changer_process_change($object, $model) {
           @unlink($jp2_filename);
         }
         else {
-          drupal_set_message('This child object [PID = ' . $page['pid'] . '] is lacking either OBJ or JP2 or both datastreams.  Pages [' . count($pages) . ' pages].', 'warning');
+          drupal_set_message(t('This child object [PID = @page_pid] is lacking either OBJ or JP2 or ' .
+            'both datastreams.  Pages [@page_count pages].', array(
+              '@page_pid' => $page['pid'],
+              '@page_count' => count($pages),
+            ), 'warning'));
           $ok = FALSE;
         }
       }
@@ -160,7 +171,15 @@ function upitt_islandora_model_changer_process_change($object, $model) {
   }
   else {
     $object->models = array("fedora-system:FedoraObject-3.0", $model);
-    $resultant_page_model = ($model == 'islandora:bookCModel') ? 'islandora:pageCModel' : 'islandora:manuscriptPageCModel';
+    if ($model == 'islandora:bookCModel') {
+      $resultant_page_model = 'islandora:pageCModel';
+    }
+    elseif ($model == 'islandora:newpaperIssueCModel') {
+      $resultant_page_model = 'islandora:newspaperPageCModel';
+    }
+    else {
+      $resultant_page_model = 'islandora:manuscriptPageCModel';
+    }
     foreach ($pages as $page) {
       $page_object = islandora_object_load($page['pid']);
       $page_current_base_model = _base_model_of_object($page_object);
